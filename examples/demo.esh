@@ -1,0 +1,21 @@
+# This is a demo script for EduShell
+# It will show various commands
+
+# Print current directory
+pwd
+
+# Create a test directory
+mkdir test_dir
+
+# Change into it
+cd test_dir
+
+# Create some files using echo
+echo "Hello World" > file1.txt
+echo "Test file" > file2.txt
+
+# List files
+ls
+
+# Go back up
+cd .. 

@@ -1,0 +1,25 @@
+# Create test files
+echo "Important data 1" > important1.txt
+echo "Important data 2" > important2.txt
+
+# List files
+ls
+
+# Remove files (they go to trash)
+rm important1.txt
+rm important2.txt
+
+# List files again (should be gone)
+ls
+
+# Show what's in trash
+trash-list
+
+# Restore a file
+restore important1.txt
+
+# List files (important1.txt should be back)
+ls
+
+# Show updated trash list
+trash-list 
