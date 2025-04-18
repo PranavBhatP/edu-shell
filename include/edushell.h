@@ -12,6 +12,11 @@
 #include <time.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sched.h>
+#include <sys/mount.h>
+#include <sys/capability.h>
+#include <linux/capability.h>
+#include "analytics.h"
 
 #define SHELL_PROMPT "EduShell> "
 #define MAX_COMMAND_LENGTH 1024
@@ -35,6 +40,7 @@ typedef struct {
     char *input_file;    // For <
     char *output_file;   // For >
     bool append_output;  // For >>
+    struct timespec start_time;  // For tracking execution time
 } Command;
 
 // Add this before the ShellState structure
@@ -54,6 +60,10 @@ typedef struct {
     FILE *log_file;
     struct DeletedFile *trash_list;
     int trash_count;
+    bool sandbox_enabled;
+    char sandbox_root[MAX_PATH_LENGTH];
+    bool monitor_mode;  // For resource monitoring
+    bool analytics_enabled;  // For learning analytics
 } ShellState;
 
 // Function prototypes
@@ -74,5 +84,7 @@ bool execute_script(const char *filename, ShellState *state);
 bool move_to_trash(const char *path, ShellState *state);
 bool restore_from_trash(const char *path, ShellState *state);
 void start_tutorial(ShellState *state);
+bool create_sandbox_env(const char *sandbox_root);
+pid_t setup_sandbox(void);
 
 #endif 

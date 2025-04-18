@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
 #include "edushell.h"
+#include "analytics.h"
+#include <time.h>
 
 void initialize_shell(ShellState *state) {
     // Initialize shell state
@@ -6,6 +9,9 @@ void initialize_shell(ShellState *state) {
     state->tutorial_mode = false;
     state->trash_list = NULL;
     state->trash_count = 0;
+    state->monitor_mode = false;
+    state->analytics_enabled = true;  // Enable analytics by default
+    state->sandbox_enabled = false;   // Disable sandbox by default
     
     // Create trash directory
     snprintf(state->trash_dir, MAX_PATH_LENGTH, "%s/.edushell_trash", getenv("HOME"));
@@ -15,15 +21,24 @@ void initialize_shell(ShellState *state) {
     char log_path[MAX_PATH_LENGTH];
     snprintf(log_path, MAX_PATH_LENGTH, "%s/.edushell_log", getenv("HOME"));
     state->log_file = fopen(log_path, "a");
+
+    // Initialize analytics
+    initialize_analytics();
 }
 
 void shell_loop(ShellState *state) {
     char *line;
     Command *cmd;
-    int running = 1;  // Changed from status to running to be more clear
-    int status;       // New variable for command status
+    int status;
+    struct timespec end_time;
 
-    while (running) {
+    while (1) {
+        // Update resource usage if monitoring is enabled
+        if (state->monitor_mode) {
+            update_resource_usage();
+            display_resource_graphs();
+        }
+
         printf(COLOR_GREEN SHELL_PROMPT COLOR_RESET);
         line = read_line();
 
@@ -36,10 +51,23 @@ void shell_loop(ShellState *state) {
 
         cmd = parse_command(line);
         if (cmd) {
+            // Record start time for command execution
+            clock_gettime(CLOCK_MONOTONIC, &cmd->start_time);
+
             if (!handle_builtin(cmd, state)) {
                 status = execute_command(cmd, state);
+                
+                // Calculate execution time and track analytics
+                if (state->analytics_enabled) {
+                    clock_gettime(CLOCK_MONOTONIC, &end_time);
+                    double execution_time = 
+                        (end_time.tv_sec - cmd->start_time.tv_sec) +
+                        (end_time.tv_nsec - cmd->start_time.tv_nsec) / 1e9;
+                    
+                    track_command_execution(cmd->args[0], execution_time, status != 0);
+                }
+
                 if (status != 0) {
-                    // Command failed, try to suggest alternatives
                     suggest_command(cmd->args[0]);
                 }
             }
@@ -104,4 +132,199 @@ Command *parse_command(char *line) {
     }
     cmd->args[cmd->arg_count] = NULL;
     return cmd;
+}
+
+bool handle_builtin(Command *cmd, ShellState *state) {
+    if (!cmd || cmd->arg_count == 0) return false;
+
+    const char *command = cmd->args[0];
+    struct timespec end_time;
+
+    // Add monitor command
+    if (strcmp(command, "monitor") == 0) {
+        if (cmd->arg_count < 2) {
+            printf("Usage: monitor [on|off]\n");
+            return true;
+        }
+        
+        if (strcmp(cmd->args[1], "on") == 0) {
+            state->monitor_mode = true;
+            printf("Resource monitoring enabled\n");
+        } else if (strcmp(cmd->args[1], "off") == 0) {
+            state->monitor_mode = false;
+            printf("Resource monitoring disabled\n");
+        }
+        return true;
+    }
+
+    // Add analytics command
+    if (strcmp(command, "analytics") == 0) {
+        if (cmd->arg_count < 2) {
+            printf("Usage: analytics [show|on|off]\n");
+            return true;
+        }
+        
+        if (strcmp(cmd->args[1], "show") == 0) {
+            display_learning_dashboard();
+        } else if (strcmp(cmd->args[1], "on") == 0) {
+            state->analytics_enabled = true;
+            printf("Learning analytics enabled\n");
+        } else if (strcmp(cmd->args[1], "off") == 0) {
+            state->analytics_enabled = false;
+            printf("Learning analytics disabled\n");
+        }
+        return true;
+    }
+
+    // sandbox command
+    if (strcmp(command, "sandbox") == 0) {
+        if (cmd->arg_count < 2) {
+            printf("Usage: sandbox [on|off]\n");
+            return true;
+        }
+        
+        if (strcmp(cmd->args[1], "on") == 0) {
+            if (geteuid() != 0) {
+                printf("Sandbox mode requires root privileges\n");
+                return true;
+            }
+
+            if (state->sandbox_enabled) {
+                printf("Sandbox is already enabled\n");
+                return true;
+            }
+            
+            // Create sandbox environment path
+            snprintf(state->sandbox_root, MAX_PATH_LENGTH, 
+                    "%s/.edushell_sandbox", getenv("HOME"));
+            
+            // Create sandbox environment first
+            if (!create_sandbox_env(state->sandbox_root)) {
+                printf("Failed to create sandbox environment\n");
+                return true;
+            }
+
+            // Setup namespaces (this will fork)
+            pid_t child_pid = setup_sandbox();
+            if (child_pid == -1) {
+                printf("Failed to setup sandbox namespaces\n");
+                return true;
+            }
+
+            if (child_pid > 0) {
+                // Parent process - wait for child to exit
+                int status;
+                waitpid(child_pid, &status, 0);
+                return true;
+            }
+
+            // We are now in the child process (PID 1 in new namespace)
+            
+            // Change root to sandbox environment
+            if (chroot(state->sandbox_root) != 0) {
+                handle_error("Failed to change root to sandbox");
+                _exit(1);
+            }
+            
+            // Change to home directory inside sandbox
+            if (chdir("/home/user") != 0) {
+                handle_error("Failed to change directory in sandbox");
+                _exit(1);
+            }
+
+            // Now mount proc inside the new root
+            if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
+                handle_error("Failed to mount proc filesystem");
+                _exit(1);
+            }
+            
+            // Update trash directory path for sandbox
+            snprintf(state->trash_dir, MAX_PATH_LENGTH, "/home/user/.edushell_trash");
+            
+            state->sandbox_enabled = true;
+            printf("Sandbox mode enabled\n");
+
+            // Start a new shell loop in sandbox mode
+            shell_loop(state);
+            _exit(0);
+        } else if (strcmp(cmd->args[1], "off") == 0) {
+            if (state->sandbox_enabled) {
+                // Cannot exit sandbox once entered due to chroot
+                printf("Cannot disable sandbox once enabled. Please start a new shell.\n");
+                return true;
+            }
+        }
+        return true;
+    }
+
+    // exit command
+    if (strcmp(command, "exit") == 0) {
+        cleanup_shell(state);
+        exit(0);
+    }
+    
+    // cd command
+    if (strcmp(command, "cd") == 0) {
+        if (cmd->arg_count < 2) {
+            // Change to home directory if no argument
+            chdir(getenv("HOME"));
+        } else if (chdir(cmd->args[1]) != 0) {
+            handle_error("Could not change directory");
+        }
+        return true;
+    }
+
+    // pwd command
+    if (strcmp(command, "pwd") == 0) {
+        char cwd[MAX_PATH_LENGTH];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            printf("%s\n", cwd);
+        } else {
+            handle_error("Could not get current directory");
+        }
+        return true;
+    }
+
+    // history command
+    if (strcmp(command, "history") == 0) {
+        for (int i = 0; i < state->history_count; i++) {
+            printf("%d  %s\n", i + 1, state->history[i]);
+        }
+        return true;
+    }
+
+    // clear command
+    if (strcmp(command, "clear") == 0) {
+        printf("\033[H\033[J");  // ANSI escape sequence to clear screen
+        return true;
+    }
+
+    // help command
+    if (strcmp(command, "help") == 0) {
+        printf("EduShell - Available Commands:\n\n");
+        printf("Built-in commands:\n");
+        printf("  cd [dir]     - Change directory (empty for home)\n");
+        printf("  pwd          - Print working directory\n");
+        printf("  history      - Show command history\n");
+        printf("  clear        - Clear the screen\n");
+        printf("  echo [text]  - Print text to screen\n");
+        printf("  sandbox      - Enable/disable sandbox mode\n");
+        printf("  monitor      - Enable/disable resource monitoring\n");
+        printf("  analytics    - Show/control learning analytics\n");
+        printf("  exit         - Exit the shell\n");
+        printf("  help         - Show this help message\n");
+        return true;
+    }
+
+    // Track execution time for built-in commands
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double execution_time = 
+        (end_time.tv_sec - cmd->start_time.tv_sec) +
+        (end_time.tv_nsec - cmd->start_time.tv_nsec) / 1e9;
+
+    if (state->analytics_enabled) {
+        track_command_execution(command, execution_time, false);
+    }
+
+    return false;
 } 
