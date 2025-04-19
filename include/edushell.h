@@ -24,26 +24,23 @@
 #define MAX_PATH_LENGTH 256
 #define HISTORY_SIZE 100
 
-// Color codes for output
+
 #define COLOR_GREEN "\033[0;32m"
 #define COLOR_RED "\033[0;31m"
 #define COLOR_RESET "\033[0m"
-
-// Add this macro near the other #defines
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
 
-// Structure to hold command information
+
 typedef struct {
     char *args[MAX_ARGS];
     int arg_count;
     bool is_background;
-    char *input_file;    // For <
-    char *output_file;   // For >
-    bool append_output;  // For >>
-    struct timespec start_time;  // For tracking execution time
+    char *input_file;    
+    char *output_file;   
+    bool append_output;  
+    struct timespec start_time;  //for tracking execution time
 } Command;
 
-// Add this before the ShellState structure
 typedef struct DeletedFile {
     char original_path[MAX_PATH_LENGTH];
     char trash_path[MAX_PATH_LENGTH];
@@ -51,7 +48,6 @@ typedef struct DeletedFile {
     struct DeletedFile *next;
 } DeletedFile;
 
-// Structure for shell state
 typedef struct {
     char *history[HISTORY_SIZE];
     int history_count;
@@ -62,8 +58,8 @@ typedef struct {
     int trash_count;
     bool sandbox_enabled;
     char sandbox_root[MAX_PATH_LENGTH];
-    bool monitor_mode;  // For resource monitoring
-    bool analytics_enabled;  // For learning analytics
+    bool monitor_mode;  
+    bool analytics_enabled;
 } ShellState;
 
 // Function prototypes

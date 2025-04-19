@@ -4,25 +4,23 @@
 #include <time.h>
 
 void initialize_shell(ShellState *state) {
-    // Initialize shell state
     state->history_count = 0;
     state->tutorial_mode = false;
     state->trash_list = NULL;
     state->trash_count = 0;
     state->monitor_mode = false;
-    state->analytics_enabled = true;  // Enable analytics by default
-    state->sandbox_enabled = false;   // Disable sandbox by default
+    state->analytics_enabled = true; 
+    state->sandbox_enabled = false;
     
-    // Create trash directory
+
     snprintf(state->trash_dir, MAX_PATH_LENGTH, "%s/.edushell_trash", getenv("HOME"));
     mkdir(state->trash_dir, 0700);
     
-    // Open log file
+
     char log_path[MAX_PATH_LENGTH];
     snprintf(log_path, MAX_PATH_LENGTH, "%s/.edushell_log", getenv("HOME"));
     state->log_file = fopen(log_path, "a");
 
-    // Initialize analytics
     initialize_analytics();
 }
 
@@ -232,38 +230,31 @@ bool handle_builtin(Command *cmd, ShellState *state) {
                 _exit(1);
             }
 
-            // Now mount proc inside the new root
+            //Now mount proc inside the new root
             if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
                 handle_error("Failed to mount proc filesystem");
                 _exit(1);
             }
-            
-            // Update trash directory path for sandbox
+
             snprintf(state->trash_dir, MAX_PATH_LENGTH, "/home/user/.edushell_trash");
             
             state->sandbox_enabled = true;
             printf("Sandbox mode enabled\n");
-
-            // Start a new shell loop in sandbox mode
             shell_loop(state);
-            _exit(0);
-        } else if (strcmp(cmd->args[1], "off") == 0) {
+            _exit(0);        } else if (strcmp(cmd->args[1], "off") == 0) {
             if (state->sandbox_enabled) {
-                // Cannot exit sandbox once entered due to chroot
+                //cannot exit chroot once entered.
                 printf("Cannot disable sandbox once enabled. Please start a new shell.\n");
                 return true;
             }
         }
         return true;
     }
-
-    // exit command
     if (strcmp(command, "exit") == 0) {
         cleanup_shell(state);
         exit(0);
     }
-    
-    // cd command
+
     if (strcmp(command, "cd") == 0) {
         if (cmd->arg_count < 2) {
             // Change to home directory if no argument
@@ -274,7 +265,6 @@ bool handle_builtin(Command *cmd, ShellState *state) {
         return true;
     }
 
-    // pwd command
     if (strcmp(command, "pwd") == 0) {
         char cwd[MAX_PATH_LENGTH];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -285,7 +275,6 @@ bool handle_builtin(Command *cmd, ShellState *state) {
         return true;
     }
 
-    // history command
     if (strcmp(command, "history") == 0) {
         for (int i = 0; i < state->history_count; i++) {
             printf("%d  %s\n", i + 1, state->history[i]);
@@ -293,13 +282,57 @@ bool handle_builtin(Command *cmd, ShellState *state) {
         return true;
     }
 
-    // clear command
     if (strcmp(command, "clear") == 0) {
         printf("\033[H\033[J");  // ANSI escape sequence to clear screen
         return true;
     }
 
-    // help command
+    if (strcmp(command, "rm") == 0) {
+        if (cmd->arg_count < 2) {
+            printf("Usage: rm <file>\n");
+            return true;
+        }
+        
+        // Move file to trash instead of deleting
+        if (!move_to_trash(cmd->args[1], state)) {
+            handle_error("Failed to move file to trash");
+        }
+        return true;
+    }
+
+    if (strcmp(command, "restore") == 0) {
+        if (cmd->arg_count < 2) {
+            printf("Usage: restore <file>\n");
+            return true;
+        }
+        
+        if (!restore_from_trash(cmd->args[1], state)) {
+            handle_error("Failed to restore file");
+        }
+        return true;
+    }
+
+    if (strcmp(command, "trash-list") == 0) {
+        if (state->trash_count == 0) {
+            printf("Trash is empty\n");
+            return true;
+        }
+
+        printf("Files in trash:\n");
+        printf("%-40s %-30s\n", "Original Path", "Deletion Time");
+        printf("---------------------------------------- ------------------------------\n");
+        
+        DeletedFile *current = state->trash_list;
+        while (current) {
+            char time_str[30];
+            struct tm *tm_info = localtime(&current->deletion_time);
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+            printf("%-40s %-30s\n", current->original_path, time_str);
+            current = current->next;
+        }
+        return true;
+    }
+
     if (strcmp(command, "help") == 0) {
         printf("EduShell - Available Commands:\n\n");
         printf("Built-in commands:\n");
@@ -311,6 +344,8 @@ bool handle_builtin(Command *cmd, ShellState *state) {
         printf("  sandbox      - Enable/disable sandbox mode\n");
         printf("  monitor      - Enable/disable resource monitoring\n");
         printf("  analytics    - Show/control learning analytics\n");
+        printf("  trash-list   - List files in trash\n");
+        printf("  restore      - Restore file from trash\n");
         printf("  exit         - Exit the shell\n");
         printf("  help         - Show this help message\n");
         return true;

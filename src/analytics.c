@@ -16,7 +16,6 @@ static LearningStats learning_stats;
 static struct timespec last_update_time;
 static unsigned long long last_idle = 0, last_total = 0;
 
-// ASCII characters for graphs
 static const char *GRAPH_CHARS[] = {"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"};
 
 void initialize_analytics(void) {
@@ -25,10 +24,6 @@ void initialize_analytics(void) {
     learning_stats.session_start = time(NULL);
     clock_gettime(CLOCK_MONOTONIC, &last_update_time);
     last_idle = last_total = 0;
-}
-
-void cleanup_analytics(void) {
-    // Save analytics data to file if needed
 }
 
 double get_cpu_usage(void) {

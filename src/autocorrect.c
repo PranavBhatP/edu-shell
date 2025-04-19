@@ -10,25 +10,23 @@ static const char *COMMON_COMMANDS[] = {
 int levenshtein_distance(const char *s1, const char *s2) {
     int len1 = strlen(s1);
     int len2 = strlen(s2);
-    
-    // Create a matrix of size (len1 + 1) x (len2 + 1)
+
     int matrix[len1 + 1][len2 + 1];
     
-    // Initialize first row and column
+
     for (int i = 0; i <= len1; i++)
         matrix[i][0] = i;
     for (int j = 0; j <= len2; j++)
         matrix[0][j] = j;
-    
-    // Fill in the rest of the matrix
+
     for (int i = 1; i <= len1; i++) {
         for (int j = 1; j <= len2; j++) {
             int cost = (s1[i-1] == s2[j-1]) ? 0 : 1;
             
             matrix[i][j] = MIN3(
-                matrix[i-1][j] + 1,      // deletion
-                matrix[i][j-1] + 1,      // insertion
-                matrix[i-1][j-1] + cost  // substitution
+                matrix[i-1][j] + 1,      
+                matrix[i][j-1] + 1,      
+                matrix[i-1][j-1] + cost  
             );
         }
     }
