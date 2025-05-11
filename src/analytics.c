@@ -114,42 +114,6 @@ void update_resource_usage(void) {
     last_update_time = current_time;
 }
 
-static void draw_graph(const char *title, double values[], int count) {
-    // Save cursor position
-    printf("\033[s");
-    
-    printf("\n%s:\n", title);
-    
-    // Find min and max values
-    double max_val = 0.0, min_val = 100.0;
-    for (int i = 0; i < count; i++) {
-        if (values[i] > max_val) max_val = values[i];
-        if (values[i] < min_val) min_val = values[i];
-    }
-    if (max_val == min_val) max_val = min_val + 1;
-    
-    // Draw graph
-    for (int y = GRAPH_HEIGHT - 1; y >= 0; y--) {
-        double threshold = (y * max_val) / (GRAPH_HEIGHT - 1);
-        printf("%3.0f%% ", threshold);
-        
-        for (int x = 0; x < count; x++) {
-            double val = values[x];
-            int height = (int)((val * (GRAPH_HEIGHT - 1)) / max_val);
-            printf("%s", height >= y ? "█" : " ");
-        }
-        printf("\n");
-    }
-    
-    // Draw time axis
-    printf("     ");
-    for (int i = 0; i < 6; i++) {
-        int x = (i * count) / 6;
-        printf("%-10d", (int)(x * UPDATE_INTERVAL));
-    }
-    printf("\nTime (s)\n");
-}
-
 void display_resource_graphs(void) {
     static bool first_display = true;
     double cpu_values[MAX_RESOURCE_POINTS];
@@ -181,9 +145,10 @@ void display_resource_graphs(void) {
     printf("Resource Usage Monitor (Updated every %d second%s)\n", 
            UPDATE_INTERVAL, UPDATE_INTERVAL > 1 ? "s" : "");
     
-    draw_graph("CPU Usage", cpu_values, resource_history.total_points);
-    draw_graph("Memory Usage", mem_values, resource_history.total_points);
-    draw_graph("Disk Usage", disk_values, resource_history.total_points);
+    // Display numerical statistics instead of graphs
+    printf("CPU Usage: %.2f%%\n", cpu_values[resource_history.current_index]);
+    printf("Memory Usage: %.2f%%\n", mem_values[resource_history.current_index]);
+    printf("Disk Usage: %.2f%%\n", disk_values[resource_history.current_index]);
 
     // Move cursor to the bottom of the monitoring area
     printf("\033[E");  // Move to beginning of next line
@@ -301,3 +266,16 @@ void generate_learning_suggestions(void) {
     
     printf("\nTip: Type 'help' to see all available commands and features.\n");
 } 
+
+void display_resource_statistics(void) {
+    double cpu_usage = get_cpu_usage();
+    double memory_usage = get_memory_usage();
+    double disk_usage = get_disk_io();
+
+    printf("Resource Usage Statistics:\n");
+    printf("CPU Usage: %.2f%%\n", cpu_usage);
+    printf("Memory Usage: %.2f%%\n", memory_usage);
+    printf("Disk Usage: %.2f%%\n", disk_usage);
+
+    fflush(stdout);
+}

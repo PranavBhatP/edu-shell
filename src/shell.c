@@ -351,6 +351,11 @@ bool handle_builtin(Command *cmd, ShellState *state) {
         return true;
     }
 
+    if (strcmp(command, "tutorial") == 0) {
+        start_tutorial(state);
+        return true;
+    }
+
     // Track execution time for built-in commands
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     double execution_time = 
